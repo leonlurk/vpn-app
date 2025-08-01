@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>$(DEVELOPMENT_LANGUAGE)</string>
+    <key>CFBundleDisplayName</key>
+    <string>NodeX VPN Extension</string>
+    <key>CFBundleExecutable</key>
+    <string>$(EXECUTABLE_NAME)</string>
+    <key>CFBundleIdentifier</key>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>$(PRODUCT_NAME)</string>
+    <key>CFBundlePackageType</key>
+    <string>XPC!</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    
+    <!-- Configuración específica de Network Extension -->
+    <key>NSExtension</key>
+    <dict>
+        <key>NSExtensionPointIdentifier</key>
+        <string>com.apple.networkextension.packet-tunnel</string>
+        <key>NSExtensionPrincipalClass</key>
+        <string>WireGuardTunnelProvider</string>
+        <key>NSExtensionAttributes</key>
+        <dict>
+            <key>NSExtensionActivationRule</key>
+            <string>TRUEPREDICATE</string>
+        </dict>
+    </dict>
+    
+    <!-- Configuración de VPN -->
+    <key>NEMachServiceName</key>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+    
+    <!-- Soporte para múltiples configuraciones -->
+    <key>NEProviderConfiguration</key>
+    <dict>
+        <key>ProviderBundleIdentifier</key>
+        <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+        <key>ProviderDisplayName</key>
+        <string>NodeX VPN</string>
+    </dict>
+    
+    <!-- Minimizar uso de memoria -->
+    <key>NSExtensionActivationRule</key>
+    <string>TRUEPREDICATE</string>
+    
+    <!-- Background modes para VPN -->
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>network-extension</string>
+        <string>voip</string>
+    </array>
+</dict>
+</plist> 

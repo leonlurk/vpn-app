@@ -1,404 +1,452 @@
-import React, { useState, useEffect, useRef } from 'react';
+/**
+ * PANTALLA REGISTRO - Integración Firebase Auth
+ */
+
+import React, { useState } from 'react';
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   StyleSheet,
+  Alert,
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Alert,
-  ScrollView,
+  ScrollView
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-  withTiming,
-  withDelay,
-  interpolate,
-  runOnJS,
-  cancelAnimation,
-} from 'react-native-reanimated';
 import { colors } from '../styles/colors';
+import { auth } from '../services/FirebaseAuth';
 
-const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
-const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity);
-
-export default function RegisterScreen({ navigation }) {
+const RegisterScreen = ({ navigation }) => {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     password: '',
-    confirmPassword: '',
+    confirmPassword: ''
   });
-  const isMounted = useRef(true);
-  
-  const fadeIn = useSharedValue(0);
-  const slideUp = useSharedValue(100);
-  const buttonScale = useSharedValue(1);
-  const progressWidth = useSharedValue(0);
-  const sparkleRotate = useSharedValue(0);
-  const pulseScale = useSharedValue(1);
+  const [loading, setLoading] = useState(false);
+  const [acceptTerms, setAcceptTerms] = useState(false);
 
-  useEffect(() => {
-    try {
-      fadeIn.value = withTiming(1, { duration: 1200 });
-      slideUp.value = withTiming(0, { duration: 1000 });
-      
-      // Sparkle animation con manejo de errores
-      const animateSparkle = () => {
-        if (isMounted.current) {
-          sparkleRotate.value = withTiming(360, { duration: 4000 }, (finished) => {
-            if (finished && isMounted.current) {
-              sparkleRotate.value = 0;
-              animateSparkle();
-            }
-          });
-        }
-      };
-      animateSparkle();
-      
-      // Pulse animation
-      pulseScale.value = withDelay(
-        500,
-        withTiming(1.1, { duration: 1000 }, (finished) => {
-          if (finished && isMounted.current) {
-            pulseScale.value = withTiming(1, { duration: 1000 });
-          }
-        })
-      );
-    } catch (error) {
-      console.warn('Error al inicializar animaciones:', error);
-    }
-
-    return () => {
-      isMounted.current = false;
-      try {
-        cancelAnimation(fadeIn);
-        cancelAnimation(slideUp);
-        cancelAnimation(buttonScale);
-        cancelAnimation(progressWidth);
-        cancelAnimation(sparkleRotate);
-        cancelAnimation(pulseScale);
-      } catch (error) {
-        console.warn('Error al limpiar animaciones:', error);
-      }
-    };
-  }, []);
-
-  const updateProgress = () => {
-    try {
-      const { name, email, password, confirmPassword } = formData;
-      const fields = [name, email, password, confirmPassword];
-      const filledFields = fields.filter(field => field.length > 0).length;
-      const progress = (filledFields / fields.length) * 100;
-      if (isMounted.current) {
-        progressWidth.value = withSpring(progress);
-      }
-    } catch (error) {
-      console.warn('Error al actualizar progreso:', error);
-    }
+  /**
+   * Actualizar campo del formulario
+   */
+  const updateField = (field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: value
+    }));
   };
 
-  const updateFormData = (field, value) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-    setTimeout(updateProgress, 0);
-  };
-
-  const fadeInStyle = useAnimatedStyle(() => {
-    try {
-      return {
-        opacity: fadeIn.value,
-        transform: [{ translateY: slideUp.value }],
-      };
-    } catch (error) {
-      return { opacity: 1, transform: [{ translateY: 0 }] };
-    }
-  });
-
-  const buttonStyle = useAnimatedStyle(() => {
-    try {
-      return {
-        transform: [{ scale: buttonScale.value }],
-      };
-    } catch (error) {
-      return { transform: [{ scale: 1 }] };
-    }
-  });
-
-  const progressStyle = useAnimatedStyle(() => {
-    try {
-      return {
-        width: `${progressWidth.value}%`,
-      };
-    } catch (error) {
-      return { width: '0%' };
-    }
-  });
-
-  const sparkleStyle = useAnimatedStyle(() => {
-    try {
-      return {
-        transform: [{ rotate: `${sparkleRotate.value}deg` }],
-      };
-    } catch (error) {
-      return { transform: [{ rotate: '0deg' }] };
-    }
-  });
-
-  const pulseStyle = useAnimatedStyle(() => {
-    try {
-      return {
-        transform: [{ scale: pulseScale.value }],
-      };
-    } catch (error) {
-      return { transform: [{ scale: 1 }] };
-    }
-  });
-
-  const handleRegister = () => {
-    try {
-      buttonScale.value = withSpring(0.95, {}, (finished) => {
-        if (finished && isMounted.current) {
-          buttonScale.value = withSpring(1);
-        }
-      });
-    } catch (error) {
-      console.warn('Error en animación del botón:', error);
-    }
-    
+  /**
+   * Validar formulario
+   */
+  const validateForm = () => {
     const { name, email, password, confirmPassword } = formData;
-    
-    if (!name || !email || !password || !confirmPassword) {
-      Alert.alert('Error', 'Por favor completa todos los campos');
-      return;
+
+    if (!name.trim()) {
+      Alert.alert('Error', 'Por favor ingresa tu nombre');
+      return false;
     }
-    
-    if (password !== confirmPassword) {
-      Alert.alert('Error', 'Las contraseñas no coinciden');
-      return;
+
+    if (!email.trim()) {
+      Alert.alert('Error', 'Por favor ingresa tu email');
+      return false;
     }
-    
+
+    if (!isValidEmail(email)) {
+      Alert.alert('Error', 'Por favor ingresa un email válido');
+      return false;
+    }
+
+    if (!password) {
+      Alert.alert('Error', 'Por favor ingresa una contraseña');
+      return false;
+    }
+
     if (password.length < 6) {
       Alert.alert('Error', 'La contraseña debe tener al menos 6 caracteres');
-      return;
+      return false;
     }
-    
-    Alert.alert('Éxito', 'Cuenta creada exitosamente', [
-      { text: 'OK', onPress: () => {
-        if (isMounted.current) {
-          navigation.navigate('Login');
-        }
-      }}
-    ]);
+
+    if (password !== confirmPassword) {
+      Alert.alert('Error', 'Las contraseñas no coinciden');
+      return false;
+    }
+
+    if (!acceptTerms) {
+      Alert.alert('Error', 'Debes aceptar los términos y condiciones');
+      return false;
+    }
+
+    return true;
+  };
+
+  /**
+   * Manejar registro con Firebase
+   */
+  const handleRegister = async () => {
+    if (!validateForm()) return;
+
+    setLoading(true);
+
+    try {
+      const { name, email, password } = formData;
+      
+      console.log('📝 Iniciando registro con React Native Firebase...');
+      
+      // Usar React Native Firebase
+      const userCredential = await auth().createUserWithEmailAndPassword(email, password);
+      
+      console.log('✅ Registro exitoso:', userCredential.user.email);
+      
+      Alert.alert(
+        '¡Registro Exitoso!', 
+        `Bienvenido ${name}!\n\nCuenta creada exitosamente.`,
+        [
+          {
+            text: 'Continuar',
+            onPress: () => navigation.replace('Main')
+          }
+        ]
+      );
+    } catch (error) {
+      console.error('❌ Error inesperado:', error);
+      Alert.alert('Error', 'Error inesperado. Por favor intenta de nuevo.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /**
+   * Navegar a login
+   */
+     const handleGoToLogin = () => {
+     navigation.navigate('Login');
+   };
+
+  /**
+   * Validar email
+   */
+  const isValidEmail = (email) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  /**
+   * Mostrar términos y condiciones
+   */
+  const showTerms = () => {
+    Alert.alert(
+      'Términos y Condiciones',
+      'Al usar NodeX VPN, aceptas nuestros términos de servicio y política de privacidad.\n\n• Uso responsable del servicio\n• Protección de datos personales\n• No actividades ilegales\n• Soporte técnico incluido',
+      [{ text: 'Entendido' }]
+    );
   };
 
   return (
-    <KeyboardAvoidingView
+    <KeyboardAvoidingView 
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <AnimatedLinearGradient
-        colors={colors.gradient}
-        style={styles.gradient}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
+      <ScrollView 
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
       >
-        <ScrollView 
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-          <Animated.View style={[styles.content, fadeInStyle]}>
-            <Animated.View style={[styles.headerContainer, pulseStyle]}>
-              <Animated.Text style={[styles.sparkle, sparkleStyle]}>✨</Animated.Text>
-              <Text style={styles.title}>Crear Cuenta</Text>
-              <Text style={styles.subtitle}>Únete a Nodex VPN</Text>
-            </Animated.View>
-            
-            <View style={styles.progressContainer}>
-              <View style={styles.progressBar}>
-                <Animated.View style={[styles.progressFill, progressStyle]} />
-              </View>
-              <Text style={styles.progressText}>Progreso del registro</Text>
-            </View>
-            
-            <Animated.View style={[styles.formContainer, fadeInStyle]}>
+        <View style={styles.content}>
+          {/* Header */}
+          <View style={styles.header}>
+            <Text style={styles.title}>Crear Cuenta</Text>
+            <Text style={styles.subtitle}>Únete a NodeX VPN y protege tu privacidad</Text>
+          </View>
+
+          {/* Formulario */}
+          <View style={styles.form}>
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Nombre completo</Text>
               <TextInput
                 style={styles.input}
-                placeholder="Nombre completo"
-                placeholderTextColor={colors.gray}
+                placeholder="Tu nombre"
+                placeholderTextColor={colors.textSecondary}
                 value={formData.name}
-                onChangeText={(text) => updateFormData('name', text)}
+                onChangeText={(value) => updateField('name', value)}
                 autoCapitalize="words"
+                autoCorrect={false}
+                editable={!loading}
               />
-              
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Email</Text>
               <TextInput
                 style={styles.input}
-                placeholder="Email"
-                placeholderTextColor={colors.gray}
+                placeholder="tu@email.com"
+                placeholderTextColor={colors.textSecondary}
                 value={formData.email}
-                onChangeText={(text) => updateFormData('email', text)}
+                onChangeText={(value) => updateField('email', value)}
                 keyboardType="email-address"
                 autoCapitalize="none"
+                autoCorrect={false}
+                editable={!loading}
               />
-              
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Contraseña</Text>
               <TextInput
                 style={styles.input}
-                placeholder="Contraseña"
-                placeholderTextColor={colors.gray}
+                placeholder="Mínimo 6 caracteres"
+                placeholderTextColor={colors.textSecondary}
                 value={formData.password}
-                onChangeText={(text) => updateFormData('password', text)}
+                onChangeText={(value) => updateField('password', value)}
                 secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
+                editable={!loading}
               />
-              
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Confirmar contraseña</Text>
               <TextInput
                 style={styles.input}
-                placeholder="Confirmar contraseña"
-                placeholderTextColor={colors.gray}
+                placeholder="Repite tu contraseña"
+                placeholderTextColor={colors.textSecondary}
                 value={formData.confirmPassword}
-                onChangeText={(text) => updateFormData('confirmPassword', text)}
+                onChangeText={(value) => updateField('confirmPassword', value)}
                 secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
+                editable={!loading}
               />
-              
-              <AnimatedTouchableOpacity
-                style={[styles.button, buttonStyle]}
-                onPress={handleRegister}
+            </View>
+
+            {/* Términos y condiciones */}
+            <View style={styles.termsContainer}>
+              <TouchableOpacity 
+                style={styles.checkboxContainer}
+                onPress={() => setAcceptTerms(!acceptTerms)}
+                disabled={loading}
               >
-                <Text style={styles.buttonText}>Crear Cuenta</Text>
-              </AnimatedTouchableOpacity>
-              
-              <TouchableOpacity onPress={() => navigation.navigate('Login')}>
-                <Text style={styles.linkText}>
-                  ¿Ya tienes cuenta? Inicia sesión aquí
-                </Text>
+                <View style={[styles.checkbox, acceptTerms && styles.checkboxChecked]}>
+                  {acceptTerms && <Text style={styles.checkboxText}>✓</Text>}
+                </View>
+                <View style={styles.termsTextContainer}>
+                  <Text style={styles.termsText}>
+                    Acepto los{' '}
+                    <Text style={styles.termsLink} onPress={showTerms}>
+                      términos y condiciones
+                    </Text>
+                    {' '}y política de privacidad
+                  </Text>
+                </View>
               </TouchableOpacity>
-            </Animated.View>
-          </Animated.View>
-        </ScrollView>
-      </AnimatedLinearGradient>
+            </View>
+
+            {/* Botón Registro */}
+            <TouchableOpacity 
+              style={[styles.registerButton, loading && styles.registerButtonDisabled]}
+              onPress={handleRegister}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color={colors.white} size="small" />
+              ) : (
+                <Text style={styles.registerButtonText}>Crear Cuenta</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          {/* Footer */}
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>¿Ya tienes una cuenta? </Text>
+            <TouchableOpacity 
+              onPress={handleGoToLogin}
+              disabled={loading}
+            >
+              <Text style={styles.footerLink}>Inicia sesión aquí</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Beneficios */}
+          <View style={styles.benefits}>
+            <Text style={styles.benefitsTitle}>✨ Con tu cuenta gratis obtienes:</Text>
+            <View style={styles.benefitsList}>
+              <Text style={styles.benefitItem}>🔒 Conexión VPN segura</Text>
+              <Text style={styles.benefitItem}>🌍 Servidores en múltiples países</Text>
+              <Text style={styles.benefitItem}>📊 Estadísticas de uso</Text>
+              <Text style={styles.benefitItem}>🛡️ Protección de datos</Text>
+            </View>
+          </View>
+
+          {/* Info Firebase */}
+          <View style={styles.firebaseInfo}>
+            <Text style={styles.firebaseText}>🔥 Powered by Firebase Auth</Text>
+            <Text style={styles.firebaseSubtext}>Autenticación segura y escalable</Text>
+          </View>
+        </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
-}
+};
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  gradient: {
-    flex: 1,
+    backgroundColor: colors.background,
   },
   scrollContent: {
     flexGrow: 1,
-    justifyContent: 'center',
   },
   content: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
+    paddingHorizontal: 24,
+    paddingVertical: 40,
   },
-  headerContainer: {
+  header: {
     alignItems: 'center',
-    marginBottom: 30,
-  },
-  sparkle: {
-    fontSize: 40,
-    marginBottom: 10,
+    marginBottom: 32,
   },
   title: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: 'bold',
-    color: colors.white,
-    textAlign: 'center',
-    marginBottom: 10,
-    textShadowColor: 'rgba(0, 0, 0, 0.3)',
-    textShadowOffset: { width: 2, height: 2 },
-    textShadowRadius: 4,
+    color: colors.primary,
+    marginBottom: 8,
   },
   subtitle: {
-    fontSize: 18,
-    color: colors.white,
+    fontSize: 16,
+    color: colors.textSecondary,
     textAlign: 'center',
-    opacity: 0.9,
   },
-  progressContainer: {
-    width: '100%',
-    marginBottom: 30,
+  form: {
+    marginBottom: 24,
   },
-  progressBar: {
-    height: 6,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-    borderRadius: 3,
-    overflow: 'hidden',
+  inputContainer: {
+    marginBottom: 20,
   },
-  progressFill: {
-    height: '100%',
-    backgroundColor: colors.white,
-    borderRadius: 3,
-  },
-  progressText: {
-    color: colors.white,
-    fontSize: 12,
-    textAlign: 'center',
-    marginTop: 5,
-    opacity: 0.8,
-  },
-  formContainer: {
-    backgroundColor: colors.white,
-    borderRadius: 25,
-    padding: 30,
-    width: '100%',
-    shadowColor: colors.black,
-    shadowOffset: {
-      width: 0,
-      height: 8,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 15,
+  label: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 8,
   },
   input: {
-    borderWidth: 2,
-    borderColor: colors.lightGray,
-    borderRadius: 15,
-    padding: 15,
-    marginVertical: 8,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
     fontSize: 16,
-    backgroundColor: colors.white,
-    shadowColor: colors.black,
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 2,
+    color: colors.text,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  button: {
-    backgroundColor: colors.primarySolid,
-    borderRadius: 15,
-    padding: 15,
+  termsContainer: {
+    marginBottom: 32,
+  },
+  checkboxContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: colors.border,
+    marginRight: 12,
+    marginTop: 2,
     alignItems: 'center',
-    marginVertical: 20,
-    shadowColor: colors.primarySolid,
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.4,
-    shadowRadius: 5,
-    elevation: 8,
+    justifyContent: 'center',
   },
-  buttonText: {
+  checkboxChecked: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  checkboxText: {
     color: colors.white,
-    fontSize: 18,
+    fontSize: 12,
     fontWeight: 'bold',
   },
-  linkText: {
-    color: colors.primarySolid,
-    fontWeight: 'bold',
-    textAlign: 'center',
+  termsTextContainer: {
+    flex: 1,
+  },
+  termsText: {
+    fontSize: 14,
+    color: colors.text,
+    lineHeight: 20,
+  },
+  termsLink: {
+    color: colors.primary,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
+  },
+  registerButton: {
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  registerButtonDisabled: {
+    backgroundColor: colors.border,
+  },
+  registerButtonText: {
+    color: colors.white,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  footerText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  footerLink: {
+    fontSize: 14,
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  benefits: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  benefitsTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 12,
+  },
+  benefitsList: {
+    gap: 8,
+  },
+  benefitItem: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    lineHeight: 20,
+  },
+  firebaseInfo: {
+    alignItems: 'center',
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  firebaseText: {
+    fontSize: 12,
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  firebaseSubtext: {
+    fontSize: 10,
+    color: colors.textSecondary,
+    marginTop: 4,
   },
 });
+
+export default RegisterScreen;

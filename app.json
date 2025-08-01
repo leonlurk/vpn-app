@@ -17,23 +17,67 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.nodexvpn.app",
+      "buildNumber": "1.0.0",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
-      }
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSAppTransportSecurity": {
+          "NSExceptionDomains": {
+            "localhost": {
+              "NSExceptionAllowsInsecureHTTPLoads": true
+            }
+          }
+        },
+        "UIBackgroundModes": [
+          "background-processing",
+          "voip"
+        ],
+        "NEProviderClasses": {
+          "com.apple.networkextension.packet-tunnel": "WireGuardTunnelProvider"
+        },
+        "NSLocationWhenInUseUsageDescription": "This app uses location to provide VPN services.",
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLName": "com.nodexvpn.app",
+            "CFBundleURLSchemes": ["nodexvpn"]
+          }
+        ]
+      },
+      "entitlements": {
+        "com.apple.developer.networking.vpn.api": ["allow-vpn"],
+        "com.apple.developer.networking.networkextension": [
+          "packet-tunnel-provider",
+          "app-proxy-provider"
+        ],
+        "com.apple.security.application-groups": ["group.com.nodexvpn.app.shared"],
+        "keychain-access-groups": [
+          "$(AppIdentifierPrefix)com.nodexvpn.app",
+          "$(AppIdentifierPrefix)group.com.nodexvpn.app.shared"
+        ],
+        "aps-environment": "development",
+        "com.apple.developer.networking.wifi-info": true,
+        "com.apple.developer.background-processing": ["vpn.background-refresh"]
+      },
+      "associatedDomains": ["applinks:nodexvpn.com"]
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#1E1E2A"
-      }
+      },
+      "package": "com.nodexvpn.app",
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "favicon": "./assets/icon.png"
     },
-    "sdkVersion": "53.0.0",
+    "scheme": "nodexvpn",
+    "plugins": [
+      "expo-dev-client",
+      "@react-native-firebase/app"
+    ],
     "extra": {
       "eas": {
-        "projectId": "b3ab1b4e-419e-4a61-9937-bdeb6c097466"
+        "projectId": "99c280cb-3612-42ff-afd7-5ab9c86de291"
       }
     }
   }

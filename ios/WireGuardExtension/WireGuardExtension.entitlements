@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Permisos para Network Extension -->
+    <key>com.apple.developer.networking.networkextension</key>
+    <array>
+        <string>packet-tunnel-provider</string>
+    </array>
+    
+    <!-- Grupo compartido con la app principal -->
+    <key>com.apple.security.application-groups</key>
+    <array>
+        <string>group.com.nodexvpn.app.shared</string>
+    </array>
+    
+    <!-- Acceso a keychain compartido para credenciales VPN -->
+    <key>keychain-access-groups</key>
+    <array>
+        <string>$(AppIdentifierPrefix)com.nodexvpn.app</string>
+        <string>$(AppIdentifierPrefix)group.com.nodexvpn.app.shared</string>
+    </array>
+    
+    <!-- Permitir comunicación entre procesos -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+    
+    <!-- Permitir acceso a todas las conexiones de red outbound -->
+    <key>com.apple.security.network.server</key>
+    <true/>
+</dict>
+</plist> 

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Permisos para VPN -->
+    <key>com.apple.developer.networking.vpn.api</key>
+    <array>
+        <string>allow-vpn</string>
+    </array>
+    
+    <!-- Permisos para Network Extensions -->
+    <key>com.apple.developer.networking.networkextension</key>
+    <array>
+        <string>packet-tunnel-provider</string>
+        <string>app-proxy-provider</string>
+    </array>
+    
+    <!-- Grupo de aplicaciones para compartir datos entre app y extensión -->
+    <key>com.apple.security.application-groups</key>
+    <array>
+        <string>group.com.nodexvpn.app.shared</string>
+    </array>
+    
+    <!-- Acceso a keychain compartido -->
+    <key>keychain-access-groups</key>
+    <array>
+        <string>$(AppIdentifierPrefix)com.nodexvpn.app</string>
+        <string>$(AppIdentifierPrefix)group.com.nodexvpn.app.shared</string>
+    </array>
+    
+    <!-- Permisos para notificaciones push (si es necesario) -->
+    <key>aps-environment</key>
+    <string>development</string>
+    
+    <!-- Capacidades de red -->
+    <key>com.apple.developer.networking.wifi-info</key>
+    <true/>
+    
+    <!-- Background app refresh -->
+    <key>com.apple.developer.background-processing</key>
+    <array>
+        <string>vpn.background-refresh</string>
+    </array>
+</dict>
+</plist> 

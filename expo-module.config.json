@@ -1,0 +1,31 @@
+{
+  "platforms": ["ios", "android"],
+  "ios": {
+    "modules": ["RealWireGuardModule"],
+    "swiftModules": ["RealWireGuardModule"],
+    "infoPlistPath": "./ios/NodexVpnApp/Info.plist",
+    "entitlementsPath": "./ios/NodexVpnApp/NodexVpnApp.entitlements",
+    "deploymentTarget": "13.0",
+    "packageSwiftPath": "./ios/Package.swift",
+    "extensions": [
+      {
+        "name": "WireGuardExtension",
+        "bundleIdentifier": "com.nodexvpn.app.WireGuardExtension",
+        "infoPlistPath": "./ios/WireGuardExtension/Info.plist",
+        "entitlementsPath": "./ios/WireGuardExtension/WireGuardExtension.entitlements",
+        "extensionType": "network-extension"
+      }
+    ],
+    "frameworks": [
+      "NetworkExtension",
+      "UserNotifications",
+      "Foundation"
+    ],
+    "dependencies": [
+      "WireGuardKit",
+      "WireGuardKitGo",
+      "WireGuardKitC"
+    ]
+  },
+  "android": {}
+} 

@@ -1,299 +1,482 @@
-import React, { useState, useEffect, useRef } from 'react';
+/**
+ * PANTALLA LOGIN - Integración Firebase Auth
+ */
+
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   StyleSheet,
+  Alert,
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Alert,
+  StatusBar,
+  Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-  withTiming,
-  withRepeat,
-  interpolate,
-  cancelAnimation,
-} from 'react-native-reanimated';
+import { MaterialIcons } from '@expo/vector-icons';
 import { colors } from '../styles/colors';
-import { globalStyles } from '../styles/globalStyles';
-import NodexLogo from '../components/NodexLogo';
+import { auth } from '../services/FirebaseAuth';
 
-const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
-const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity);
+const { width, height } = Dimensions.get('window');
 
-export default function LoginScreen({ navigation }) {
+const LoginScreen = ({ navigation }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const isMounted = useRef(true);
-  
-  const fadeIn = useSharedValue(0);
-  const slideUp = useSharedValue(50);
-  const buttonScale = useSharedValue(1);
-  const floatingAnimation = useSharedValue(0);
+  const [loading, setLoading] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
-    // Inicializar animaciones de manera segura
-    try {
-      fadeIn.value = withTiming(1, { duration: 1000 });
-      slideUp.value = withTiming(0, { duration: 800 });
-      
-      floatingAnimation.value = withRepeat(
-        withTiming(1, { duration: 2000 }),
-        -1,
-        true
-      );
-    } catch (error) {
-      console.warn('Error al inicializar animaciones:', error);
-    }
-
-    // Cleanup function
-    return () => {
-      isMounted.current = false;
-      try {
-        cancelAnimation(fadeIn);
-        cancelAnimation(slideUp);
-        cancelAnimation(buttonScale);
-        cancelAnimation(floatingAnimation);
-      } catch (error) {
-        console.warn('Error al limpiar animaciones:', error);
-      }
-    };
+    // La verificación de sesión persistente se maneja en AppNavigator
+    console.log('🔑 LoginScreen iniciado');
   }, []);
 
-  const fadeInStyle = useAnimatedStyle(() => {
-    try {
-      return {
-        opacity: fadeIn.value,
-        transform: [{ translateY: slideUp.value }],
-      };
-    } catch (error) {
-      return { opacity: 1, transform: [{ translateY: 0 }] };
-    }
-  });
-
-  const buttonStyle = useAnimatedStyle(() => {
-    try {
-      return {
-        transform: [{ scale: buttonScale.value }],
-      };
-    } catch (error) {
-      return { transform: [{ scale: 1 }] };
-    }
-  });
-
-  const floatingStyle = useAnimatedStyle(() => {
-    try {
-      return {
-        transform: [
-          {
-            translateY: interpolate(
-              floatingAnimation.value,
-              [0, 1],
-              [0, -10]
-            ),
-          },
-        ],
-      };
-    } catch (error) {
-      return { transform: [{ translateY: 0 }] };
-    }
-  });
-
-  const backgroundStyle = useAnimatedStyle(() => {
-    try {
-      return {
-        opacity: interpolate(
-          floatingAnimation.value,
-          [0, 1],
-          [0.9, 0.7]
-        ),
-      };
-    } catch (error) {
-      return { opacity: 0.9 };
-    }
-  });
-
-  const handleLogin = () => {
-    try {
-      buttonScale.value = withSpring(0.95, {}, () => {
-        if (isMounted.current) {
-          buttonScale.value = withSpring(1);
-        }
-      });
-    } catch (error) {
-      console.warn('Error en animación del botón:', error);
-    }
-    
-    if (!email || !password) {
+  /**
+   * Manejar login con Firebase
+   */
+  const handleLogin = async () => {
+    if (!email.trim() || !password.trim()) {
       Alert.alert('Error', 'Por favor completa todos los campos');
       return;
     }
+
+    if (!isValidEmail(email)) {
+      Alert.alert('Error', 'Por favor ingresa un email válido');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      console.log('🔑 Iniciando login con React Native Firebase...');
+      
+      // Usar React Native Firebase
+      const userCredential = await auth().signInWithEmailAndPassword(email, password);
+      
+      console.log('✅ Login exitoso:', userCredential.user.email);
+      navigation.replace('Main');
+    } catch (error) {
+      console.error('❌ Error login:', error);
+      Alert.alert('Error', 'Credenciales inválidas');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /**
+   * Navegar a registro
+   */
+  const handleGoToRegister = () => {
+    navigation.navigate('Register');
+  };
+
+  /**
+   * Recuperar contraseña
+   */
+  const handleForgotPassword = async () => {
+    if (!email.trim()) {
+      Alert.alert('Email requerido', 'Por favor ingresa tu email para recuperar la contraseña');
+      return;
+    }
+
+    if (!isValidEmail(email)) {
+      Alert.alert('Error', 'Por favor ingresa un email válido');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await auth().sendPasswordResetEmail(email.trim());
+      
+      Alert.alert(
+        'Email enviado', 
+        'Revisa tu bandeja de entrada para restablecer tu contraseña'
+      );
+    } catch (error) {
+      console.error('❌ Error recuperando contraseña:', error);
+      Alert.alert('Error', 'Error al enviar email de recuperación');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /**
+   * Login demo (para pruebas rápidas)
+   */
+  const handleDemoLogin = async () => {
+    setEmail('demo@nodexvpn.com');
+    setPassword('demo123456');
     
-    // Simulate login logic
-    Alert.alert('Éxito', 'Iniciando sesión...', [
-      { text: 'OK', onPress: () => {
-        if (isMounted.current) {
-          navigation.navigate('Main');
-        }
-      }}
-    ]);
+    // Simular login demo
+    setTimeout(() => {
+      Alert.alert('Demo', 'Función demo - configura Firebase para usar autenticación real');
+    }, 500);
+  };
+
+  /**
+   * Validar email
+   */
+  const isValidEmail = (email) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <AnimatedLinearGradient
-        colors={colors.gradient}
-        style={[styles.gradient, backgroundStyle]}
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+      <LinearGradient
+        colors={['#0F0C29', '#24243e', '#302B63']}
+        style={styles.gradient}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       >
-        <Animated.View style={[styles.content, fadeInStyle]}>
-          <Animated.View style={styles.logoContainer}>
-            <NodexLogo width={200} height={75} />
-          </Animated.View>
-          
-          <Text style={styles.subtitle}>Conexión Segura y Privada</Text>
-          
-          <Animated.View style={[styles.formContainer, fadeInStyle]}>
-            <TextInput
-              style={styles.input}
-              placeholder="Email"
-              placeholderTextColor={colors.gray}
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-            
-            <TextInput
-              style={styles.input}
-              placeholder="Contraseña"
-              placeholderTextColor={colors.gray}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-            />
-            
-            <AnimatedTouchableOpacity
-              style={[styles.button, buttonStyle]}
-              onPress={handleLogin}
-            >
-              <Text style={styles.buttonText}>Iniciar Sesión</Text>
-            </AnimatedTouchableOpacity>
-            
-            <TouchableOpacity onPress={() => navigation.navigate('Register')}>
-              <Text style={styles.linkText}>
-                ¿No tienes cuenta? Regístrate aquí
-              </Text>
-            </TouchableOpacity>
-          </Animated.View>
-        </Animated.View>
-      </AnimatedLinearGradient>
-    </KeyboardAvoidingView>
+        <KeyboardAvoidingView
+          style={styles.keyboardContainer}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={styles.content}>
+            {/* Header moderno */}
+            <View style={styles.header}>
+              <View style={styles.logoContainer}>
+                <MaterialIcons name="security" size={48} color="#00D4FF" />
+                <View style={styles.logoGlow} />
+              </View>
+              <Text style={styles.title}>Nodex VPN</Text>
+              <Text style={styles.subtitle}>Conexión segura desde Brasil 🇧🇷</Text>
+            </View>
+
+            {/* Formulario moderno */}
+            <View style={styles.form}>
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Email</Text>
+                <View style={styles.inputWrapper}>
+                  <MaterialIcons name="email" size={20} color="rgba(255, 255, 255, 0.6)" />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="tu@email.com"
+                    placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                    value={email}
+                    onChangeText={setEmail}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    editable={!loading}
+                  />
+                </View>
+              </View>
+                
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Contraseña</Text>
+                <View style={styles.inputWrapper}>
+                  <MaterialIcons name="lock" size={20} color="rgba(255, 255, 255, 0.6)" />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="••••••••"
+                    placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                    value={password}
+                    onChangeText={setPassword}
+                    secureTextEntry={!showPassword}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    editable={!loading}
+                  />
+                  <TouchableOpacity 
+                    onPress={() => setShowPassword(!showPassword)}
+                    style={styles.eyeButton}
+                  >
+                    <MaterialIcons 
+                      name={showPassword ? "visibility-off" : "visibility"} 
+                      size={20} 
+                      color="rgba(255, 255, 255, 0.6)" 
+                    />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Opciones mejoradas */}
+              <View style={styles.options}>
+                <TouchableOpacity 
+                  style={styles.checkboxContainer}
+                  onPress={() => setRememberMe(!rememberMe)}
+                  disabled={loading}
+                >
+                  <View style={[styles.checkbox, rememberMe && styles.checkboxChecked]}>
+                    {rememberMe && <MaterialIcons name="check" size={14} color="#FFFFFF" />}
+                  </View>
+                  <Text style={styles.checkboxLabel}>Recordarme</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  onPress={handleForgotPassword}
+                  disabled={loading}
+                  style={styles.forgotPasswordButton}
+                >
+                  <Text style={styles.forgotPassword}>¿Olvidaste tu contraseña?</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Botón Login moderno */}
+              <TouchableOpacity 
+                style={[styles.loginButton, loading && styles.loginButtonDisabled]}
+                onPress={handleLogin}
+                disabled={loading}
+                activeOpacity={0.8}
+              >
+                <LinearGradient
+                  colors={loading ? ['rgba(255, 255, 255, 0.1)', 'rgba(255, 255, 255, 0.05)'] : ['#00D4FF', '#0099CC']}
+                  style={styles.buttonGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#FFFFFF" size="small" />
+                  ) : (
+                    <>
+                      <MaterialIcons name="login" size={20} color="#FFFFFF" />
+                      <Text style={styles.loginButtonText}>Iniciar Sesión</Text>
+                    </>
+                  )}
+                </LinearGradient>
+              </TouchableOpacity>
+
+              {/* Botón Demo mejorado */}
+              <TouchableOpacity 
+                style={styles.demoButton}
+                onPress={handleDemoLogin}
+                disabled={loading}
+                activeOpacity={0.8}
+              >
+                <LinearGradient
+                  colors={['rgba(255, 255, 255, 0.1)', 'rgba(255, 255, 255, 0.05)']}
+                  style={styles.buttonGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                >
+                  <MaterialIcons name="rocket-launch" size={20} color="#FFB800" />
+                  <Text style={styles.demoButtonText}>Login Demo</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+
+            {/* Footer moderno */}
+            <View style={styles.footer}>
+              <Text style={styles.footerText}>¿No tienes una cuenta? </Text>
+              <TouchableOpacity 
+                onPress={handleGoToRegister}
+                disabled={loading}
+              >
+                <Text style={styles.footerLink}>Regístrate aquí</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Info Firebase */}
+            <View style={styles.firebaseInfo}>
+              <MaterialIcons name="verified-user" size={16} color="#00FF87" />
+              <Text style={styles.firebaseText}>Autenticación Firebase</Text>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </LinearGradient>
+    </View>
   );
-}
+};
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#0F0C29',
   },
   gradient: {
+    flex: 1,
+  },
+  keyboardContainer: {
     flex: 1,
   },
   content: {
     flex: 1,
     justifyContent: 'center',
+    paddingHorizontal: 24,
+    paddingTop: 60,
+  },
+  header: {
     alignItems: 'center',
-    padding: 20,
+    marginBottom: 48,
   },
   logoContainer: {
-    marginBottom: 40,
-  },
-  logo: {
+    position: 'relative',
+    marginBottom: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  logoGlow: {
+    position: 'absolute',
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: 'rgba(0, 212, 255, 0.1)',
+    top: -26,
+    left: -26,
+  },
   title: {
-    fontSize: 36,
-    fontWeight: 'bold',
-    color: colors.white,
-    textAlign: 'center',
-    marginBottom: 10,
-    textShadowColor: 'rgba(0, 0, 0, 0.3)',
-    textShadowOffset: { width: 2, height: 2 },
-    textShadowRadius: 4,
+    fontSize: 32,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 8,
+    letterSpacing: -0.5,
   },
   subtitle: {
-    fontSize: 18,
-    color: colors.white,
+    fontSize: 16,
+    color: 'rgba(255, 255, 255, 0.7)',
     textAlign: 'center',
-    marginBottom: 40,
+    fontWeight: '500',
+  },
+  form: {
+    marginBottom: 24,
+  },
+  inputContainer: {
+    marginBottom: 20,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginBottom: 8,
     opacity: 0.9,
   },
-  formContainer: {
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderRadius: 25,
-    padding: 30,
-    width: '100%',
-    shadowColor: colors.black,
-    shadowOffset: {
-      width: 0,
-      height: 8,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 15,
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   input: {
-    borderWidth: 2,
-    borderColor: colors.lightGray,
-    borderRadius: 15,
-    padding: 15,
-    marginVertical: 10,
+    flex: 1,
     fontSize: 16,
-    backgroundColor: colors.white,
-    shadowColor: colors.black,
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 2,
+    color: '#FFFFFF',
+    marginLeft: 12,
+    fontWeight: '500',
   },
-  button: {
-    backgroundColor: colors.primarySolid,
-    borderRadius: 15,
-    padding: 15,
+  eyeButton: {
+    padding: 8,
+  },
+  options: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    marginVertical: 15,
-    shadowColor: colors.primarySolid,
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.4,
-    shadowRadius: 5,
+    marginBottom: 32,
+  },
+  checkboxContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    marginRight: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  checkboxChecked: {
+    backgroundColor: '#00D4FF',
+    borderColor: '#00D4FF',
+  },
+  checkboxLabel: {
+    fontSize: 14,
+    color: '#FFFFFF',
+    fontWeight: '500',
+    opacity: 0.8,
+  },
+  forgotPasswordButton: {
+    paddingVertical: 8,
+  },
+  forgotPassword: {
+    fontSize: 14,
+    color: '#00D4FF',
+    fontWeight: '600',
+  },
+  loginButton: {
+    borderRadius: 16,
+    marginBottom: 16,
+    overflow: 'hidden',
+    shadowColor: '#00D4FF',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
     elevation: 8,
   },
-  buttonText: {
-    color: colors.white,
-    fontSize: 18,
-    fontWeight: 'bold',
+  loginButtonDisabled: {
+    opacity: 0.6,
   },
-  linkText: {
-    color: colors.primary,
-    textAlign: 'center',
+  buttonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 18,
+    paddingHorizontal: 24,
+  },
+  loginButtonText: {
+    color: '#FFFFFF',
     fontSize: 16,
-    textDecorationLine: 'underline',
-    marginTop: 15,
+    fontWeight: '700',
+    marginLeft: 8,
+    letterSpacing: 0.5,
+  },
+  demoButton: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  demoButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+    marginTop: 24,
+  },
+  footerText: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.6)',
+    fontWeight: '500',
+  },
+  footerLink: {
+    fontSize: 14,
+    color: '#00FF87',
+    fontWeight: '700',
+  },
+  firebaseInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+    marginTop: 16,
+  },
+  firebaseText: {
+    fontSize: 12,
+    color: '#00FF87',
+    fontWeight: '600',
+    marginLeft: 6,
   },
 });
+
+export default LoginScreen;

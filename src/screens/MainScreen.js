@@ -1,194 +1,262 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   StatusBar,
-  Dimensions,
   Alert,
+  Dimensions,
 } from 'react-native';
+import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-  withTiming,
-  withRepeat,
-  interpolate,
-  withDelay,
-  runOnJS,
-  cancelAnimation,
-} from 'react-native-reanimated';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import VpnIntegration from '../services/VpnIntegration';
 import { colors } from '../styles/colors';
-import NodexLogo from '../components/NodexLogo';
 
-const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
-const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity);
+const { width, height } = Dimensions.get('window');
 
-const { width } = Dimensions.get('window');
+export default function MainScreen() {
+  // Estado de VPN
+  const [vpnStatus, setVpnStatus] = useState({
+    isConnected: false,
+    server: null,
+    connectionTime: null
+  });
 
-export default function MainScreen({ navigation, route }) {
-  const [isConnected, setIsConnected] = useState(false);
-  const [server, setServer] = useState({ name: 'Estados Unidos', flag: '🇺🇸', ping: 25 });
-  const isMounted = useRef(true);
-  
-  const connectAnimation = useSharedValue(0);
-  const pulseAnimation = useSharedValue(0);
-  const buttonScale = useSharedValue(1);
-  const glowAnimation = useSharedValue(0);
+  const [vpnStats, setVpnStats] = useState({
+    downloadSpeed: '0 KB/s',
+    uploadSpeed: '0 KB/s',
+    dataUsed: '0 MB'
+  });
+
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [errorText, setErrorText] = useState('');
+  const [servers, setServers] = useState([]);
 
   useEffect(() => {
-    if (route.params?.selectedServer) {
-      setServer(route.params.selectedServer);
-      if (isConnected) {
-        // Re-conectar al nuevo servidor
-        setIsConnected(false);
-        setTimeout(() => handleConnect(), 500);
+    // Inicializar estado VPN
+    const initializeVpn = async () => {
+      try {
+        // Obtener servidores disponibles
+        const availableServers = VpnIntegration.getServers();
+        setServers(availableServers);
+        
+        // Obtener estado actual
+        const status = VpnIntegration.getStatus();
+        setVpnStatus({
+          isConnected: status.isConnected,
+          server: status.currentServer,
+          connectionTime: status.connectionTime
+        });
+        
+        if (status.isConnected) {
+          const stats = VpnIntegration.getStats();
+          setVpnStats({
+            downloadSpeed: stats.speed,
+            uploadSpeed: '0 KB/s', // Placeholder
+            dataUsed: `${(stats.bytesReceived / 1024 / 1024).toFixed(1)} MB`
+          });
+        }
+      } catch (error) {
+        console.error('Error inicializando VPN:', error);
       }
-    }
-  }, [route.params?.selectedServer]);
+    };
 
-  useEffect(() => {
-    try {
-      pulseAnimation.value = withRepeat(withTiming(1, { duration: 2000 }), -1, true);
-      glowAnimation.value = withRepeat(withTiming(1, { duration: 2500 }), -1, true);
-    } catch (error) {
-      console.warn('Error al inicializar animaciones:', error);
-    }
+    initializeVpn();
+
+    // Agregar listeners
+    const unsubscribeStatus = VpnIntegration.addStatusListener((status) => {
+      setVpnStatus({
+        isConnected: status.isConnected,
+        server: status.currentServer,
+        connectionTime: status.connectionTime
+      });
+      setIsConnecting(status.isConnecting);
+      setErrorText(status.error || '');
+    });
+
+    const unsubscribeStats = VpnIntegration.addStatsListener((stats) => {
+      setVpnStats({
+        downloadSpeed: stats.speed,
+        uploadSpeed: '0 KB/s', // Placeholder
+        dataUsed: `${(stats.bytesReceived / 1024 / 1024).toFixed(1)} MB`
+      });
+    });
 
     return () => {
-      isMounted.current = false;
-      try {
-        cancelAnimation(connectAnimation);
-        cancelAnimation(pulseAnimation);
-        cancelAnimation(buttonScale);
-        cancelAnimation(glowAnimation);
-      } catch (error) {
-        console.warn('Error al limpiar animaciones:', error);
-      }
+      unsubscribeStatus();
+      unsubscribeStats();
     };
   }, []);
 
-  const handleConnect = () => {
-    try {
-      buttonScale.value = withSpring(0.95, {}, (finished) => {
-        if (finished && isMounted.current) {
-          buttonScale.value = withSpring(1);
-        }
-      });
-      
-      const nextState = !isConnected;
-      const duration = nextState ? 1500 : 800;
+  const handleConnect = async () => {
+    if (isConnecting) return;
 
-      connectAnimation.value = withTiming(nextState ? 1 : 0, { duration }, (finished) => {
-        if (finished && isMounted.current) {
-          runOnJS(setIsConnected)(nextState);
+    try {
+      setIsConnecting(true);
+      setErrorText('');
+      
+      if (!vpnStatus.isConnected) {
+        console.log('🚀 Iniciando conexión VPN...');
+        
+        // Usar el primer servidor disponible
+        const serverToConnect = servers[0];
+        if (!serverToConnect) {
+          throw new Error('No hay servidores disponibles');
         }
-      });
+        
+        await VpnIntegration.connect(serverToConnect);
+        
+      } else {
+        console.log('🔌 Desconectando VPN...');
+        await VpnIntegration.disconnect();
+      }
+
     } catch (error) {
-      console.warn('Error en animación de conexión:', error);
-      setIsConnected(!isConnected);
+      console.error('Error en conexión VPN:', error);
+      Alert.alert('Error', error.message || 'Error conectando al VPN');
+      setIsConnecting(false);
     }
   };
 
-  const connectButtonStyle = useAnimatedStyle(() => {
-    const backgroundColor = connectAnimation.value === 1 ? colors.success : colors.primarySolid;
-    return {
-      transform: [{ scale: buttonScale.value }],
-      backgroundColor: withTiming(backgroundColor, { duration: 500 }),
-    };
-  });
-
-  const pulseStyle = useAnimatedStyle(() => {
-    const scale = interpolate(pulseAnimation.value, [0, 0.5, 1], [1, 1.1, 1]);
-    const opacity = interpolate(pulseAnimation.value, [0, 0.5, 1], [0.6, 1, 0.6]);
-    return {
-      transform: [{ scale }],
-      opacity: isConnected ? opacity : 0,
-    };
-  });
-
-  const glowStyle = useAnimatedStyle(() => {
-    const opacity = interpolate(glowAnimation.value, [0, 0.5, 1], [0.3, 0.7, 0.3]);
-    return {
-      shadowOpacity: isConnected ? opacity : 0,
-    };
-  });
-
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
       <LinearGradient
-        colors={['#2A2A3A', '#1E1E2A']}
+        colors={['#0F0C29', '#24243e', '#302B63']}
         style={styles.gradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
       >
-        {/* Header */}
+        {/* Header moderno */}
         <View style={styles.header}>
-          <NodexLogo width={120} height={45} />
-          <TouchableOpacity 
-            style={styles.settingsButton}
-            onPress={() => Alert.alert('Configuración', 'Próximamente...')}
-          >
-            <Ionicons name="settings-outline" size={26} color={colors.white} />
-          </TouchableOpacity>
+          <View style={styles.logoContainer}>
+            <MaterialIcons name="security" size={32} color="#00D4FF" />
+            <Text style={styles.headerTitle}>Nodex VPN</Text>
+          </View>
+          <View style={styles.statusIndicator}>
+            <View style={[
+              styles.statusDot, 
+              { backgroundColor: vpnStatus.isConnected ? '#00FF87' : '#FF6B6B' }
+            ]} />
+            <Text style={styles.headerSubtitle}>
+              {vpnStatus.isConnected ? 'Protegido' : 'Desprotegido'}
+            </Text>
+          </View>
         </View>
 
-        {/* Main Connection Area */}
-        <View style={styles.connectionArea}>
-          {/* Connection Status */}
-          <Text style={styles.statusText}>
-            {isConnected ? 'CONECTADO' : 'DESCONECTADO'}
-          </Text>
-
-          {/* Pulse Effect */}
-          <Animated.View style={[styles.pulseRing, pulseStyle]} />
-          
-          {/* Main Connection Button */}
-          <Animated.View style={[styles.connectionButtonContainer, glowStyle]}>
-            <AnimatedTouchableOpacity
-              style={[styles.connectionButton, connectButtonStyle]}
-              onPress={handleConnect}
-            >
-              <MaterialCommunityIcons 
-                name={isConnected ? 'shield-lock' : 'shield-off'} 
-                size={width * 0.2} 
-                color={colors.white} 
-              />
-            </AnimatedTouchableOpacity>
-          </Animated.View>
-
-          {/* Server Selection */}
-          <View style={styles.serverSection}>
-            <Text style={styles.serverLabel}>Servidor Actual:</Text>
+        {/* Sección central del botón de conexión */}
+        <View style={styles.connectSection}>
+          {/* Anillos decorativos */}
+          <View style={styles.ringContainer}>
+            <View style={[styles.ring, styles.ring1]} />
+            <View style={[styles.ring, styles.ring2]} />
+            <View style={[styles.ring, styles.ring3]} />
+            
+            {/* Botón principal */}
             <TouchableOpacity 
-              style={styles.serverButton}
-              onPress={() => navigation.navigate('ServerSelection')}
+              style={[
+                styles.connectButton,
+                { 
+                  backgroundColor: vpnStatus.isConnected ? '#00FF87' : '#00D4FF',
+                  transform: [{ scale: isConnecting ? 0.95 : 1 }]
+                }
+              ]}
+              onPress={handleConnect}
+              disabled={isConnecting}
+              activeOpacity={0.9}
             >
-              <Text style={styles.serverText}>{server.flag} {server.name}</Text>
-              <Ionicons name="chevron-down" size={20} color={colors.white} />
+              <LinearGradient
+                colors={vpnStatus.isConnected ? ['#00FF87', '#00C470'] : ['#00D4FF', '#0099CC']}
+                style={styles.buttonGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <MaterialIcons 
+                  name={isConnecting ? "hourglass-empty" : vpnStatus.isConnected ? "shield" : "security"} 
+                  size={64} 
+                  color="#FFFFFF" 
+                />
+              </LinearGradient>
             </TouchableOpacity>
           </View>
+
+          <View style={styles.statusTextContainer}>
+            <Text style={styles.connectStatus}>
+              {isConnecting ? 'Conectando...' : vpnStatus.isConnected ? 'CONECTADO' : 'TOCA PARA CONECTAR'}
+            </Text>
+            
+            {errorText ? (
+              <Text style={styles.errorText}>{errorText}</Text>
+            ) : null}
+          </View>
         </View>
 
-        {/* Stats Section */}
-        <View style={styles.statsSection}>
-          <View style={styles.statCard}>
-            <MaterialCommunityIcons name="speedometer" size={24} color={colors.white} />
-            <Text style={styles.statValue}>{isConnected ? '15.2 MB/s' : '--'}</Text>
-            <Text style={styles.statLabel}>Velocidad</Text>
+        {/* Información del servidor */}
+        {vpnStatus.server && (
+          <View style={styles.serverInfo}>
+            <View style={styles.serverCard}>
+              <View style={styles.serverHeader}>
+                <Text style={styles.serverFlag}>{vpnStatus.server.flag}</Text>
+                <View style={styles.serverDetails}>
+                  <Text style={styles.serverName}>{vpnStatus.server.name}</Text>
+                  <Text style={styles.serverLocation}>São Paulo, Brasil</Text>
+                </View>
+                <View style={styles.pingContainer}>
+                  <Text style={styles.pingValue}>25ms</Text>
+                  <Text style={styles.pingLabel}>ping</Text>
+                </View>
+              </View>
+            </View>
           </View>
-          <View style={styles.statCard}>
-            <MaterialCommunityIcons name="signal-variant" size={24} color={colors.white} />
-            <Text style={styles.statValue}>{isConnected ? `${server.ping} ms` : '--'}</Text>
-            <Text style={styles.statLabel}>Ping</Text>
+        )}
+
+        {/* Estadísticas mejoradas */}
+        {vpnStatus.isConnected && (
+          <View style={styles.statsContainer}>
+            <View style={styles.statCard}>
+              <MaterialIcons name="download" size={28} color="#00D4FF" />
+              <Text style={styles.statValue}>{vpnStats.downloadSpeed}</Text>
+              <Text style={styles.statLabel}>Descarga</Text>
+            </View>
+            <View style={styles.statCard}>
+              <MaterialIcons name="upload" size={28} color="#00FF87" />
+              <Text style={styles.statValue}>{vpnStats.uploadSpeed}</Text>
+              <Text style={styles.statLabel}>Subida</Text>
+            </View>
+            <View style={styles.statCard}>
+              <MaterialIcons name="data-usage" size={28} color="#FFB800" />
+              <Text style={styles.statValue}>{vpnStats.dataUsed}</Text>
+              <Text style={styles.statLabel}>Transferido</Text>
+            </View>
           </View>
-          <View style={styles.statCard}>
-            <MaterialCommunityIcons name="earth" size={24} color={colors.white} />
-            <Text style={styles.statValue}>{server.name.split(' ')[0]}</Text>
-            <Text style={styles.statLabel}>Región</Text>
-          </View>
+        )}
+
+        {/* Acciones rápidas mejoradas */}
+        <View style={styles.quickActions}>
+          <TouchableOpacity style={styles.actionButton}>
+            <LinearGradient
+              colors={['rgba(0, 212, 255, 0.2)', 'rgba(0, 212, 255, 0.1)']}
+              style={styles.actionGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <MaterialIcons name="public" size={24} color="#00D4FF" />
+              <Text style={styles.actionText}>Cambiar Ubicación</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+          
+          <TouchableOpacity style={styles.actionButton}>
+            <LinearGradient
+              colors={['rgba(255, 255, 255, 0.1)', 'rgba(255, 255, 255, 0.05)']}
+              style={styles.actionGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <MaterialIcons name="tune" size={24} color="#FFFFFF" />
+              <Text style={styles.actionText}>Configuración</Text>
+            </LinearGradient>
+          </TouchableOpacity>
         </View>
       </LinearGradient>
     </View>
@@ -198,107 +266,229 @@ export default function MainScreen({ navigation, route }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#0F0C29',
   },
   gradient: {
     flex: 1,
-    justifyContent: 'space-between',
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingTop: 60,
-    paddingHorizontal: 20,
-    paddingBottom: 20,
+    paddingBottom: 30,
+    paddingHorizontal: 24,
   },
-  settingsButton: {
-    padding: 10,
-  },
-  connectionArea: {
-    flex: 1,
-    justifyContent: 'center',
+  logoContainer: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
   },
-  statusText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: colors.white,
-    marginBottom: 30,
-    letterSpacing: 3,
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginLeft: 12,
+    letterSpacing: -0.5,
+  },
+  statusIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: '#FFFFFF',
+    fontWeight: '500',
     opacity: 0.8,
   },
-  pulseRing: {
+  connectSection: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+    paddingHorizontal: 24,
+  },
+  ringContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  ring: {
     position: 'absolute',
-    width: width * 0.6,
-    height: width * 0.6,
-    borderRadius: (width * 0.6) / 2,
-    borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.8)',
+    borderWidth: 1,
+    borderRadius: 999,
+    opacity: 0.1,
   },
-  connectionButtonContainer: {
-    shadowColor: colors.success,
-    shadowOffset: { width: 0, height: 0 },
-    shadowRadius: 25,
-    elevation: 20,
+  ring1: {
+    width: 200,
+    height: 200,
+    borderColor: '#00D4FF',
   },
-  connectionButton: {
-    width: width * 0.45,
-    height: width * 0.45,
-    borderRadius: (width * 0.45) / 2,
+  ring2: {
+    width: 250,
+    height: 250,
+    borderColor: '#00FF87',
+  },
+  ring3: {
+    width: 300,
+    height: 300,
+    borderColor: '#FFFFFF',
+  },
+  connectButton: {
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 15,
+  },
+  buttonGradient: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 70,
     justifyContent: 'center',
     alignItems: 'center',
-    marginVertical: 30,
   },
-  serverSection: {
+  statusTextContainer: {
     alignItems: 'center',
-    marginTop: 30,
+    marginTop: 40,
   },
-  serverLabel: {
-    color: colors.white,
-    fontSize: 16,
-    marginBottom: 10,
-    opacity: 0.7,
-  },
-  serverButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 25,
-  },
-  serverText: {
-    color: colors.white,
-    fontSize: 17,
+  connectStatus: {
+    fontSize: 18,
     fontWeight: '600',
-    marginRight: 10,
+    color: '#FFFFFF',
+    letterSpacing: 2,
+    textAlign: 'center',
   },
-  statsSection: {
+  errorText: {
+    color: '#FF6B6B',
+    fontSize: 14,
+    marginTop: 12,
+    textAlign: 'center',
+    fontWeight: '500',
+    opacity: 0.9,
+  },
+  serverInfo: {
+    paddingHorizontal: 24,
+    paddingBottom: 24,
+  },
+  serverCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  serverHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingHorizontal: 20,
-    paddingBottom: 40,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  serverFlag: {
+    fontSize: 32,
+  },
+  serverDetails: {
+    flex: 1,
+    marginLeft: 16,
+  },
+  serverName: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginBottom: 4,
+  },
+  serverLocation: {
+    fontSize: 14,
+    color: '#FFFFFF',
+    opacity: 0.7,
+    fontWeight: '400',
+  },
+  pingContainer: {
+    alignItems: 'flex-end',
+  },
+  pingValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#00FF87',
+  },
+  pingLabel: {
+    fontSize: 12,
+    color: '#FFFFFF',
+    opacity: 0.6,
+    marginTop: 2,
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 24,
+    paddingBottom: 24,
+    gap: 12,
   },
   statCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderRadius: 15,
-    padding: 15,
+    flex: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderRadius: 16,
+    padding: 16,
     alignItems: 'center',
-    width: width / 3.8,
-    minHeight: 100,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    minHeight: 90,
     justifyContent: 'center',
   },
   statValue: {
-    color: colors.white,
+    color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
     marginTop: 8,
+    marginBottom: 4,
   },
   statLabel: {
-    color: colors.white,
+    color: '#FFFFFF',
     fontSize: 12,
-    marginTop: 5,
     opacity: 0.7,
+    fontWeight: '500',
+  },
+  quickActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 24,
+    paddingBottom: 40,
+    gap: 12,
+  },
+  actionButton: {
+    flex: 1,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  actionGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  actionText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 10,
   },
 });

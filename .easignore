@@ -1,0 +1,8 @@
+# Excluir backend del build de EAS
+nodex-vpn-server/
+ecosystem.config.js
+ 
+# Excluir archivos de desarrollo
+*.log
+.DS_Store
+Thumbs.db 
