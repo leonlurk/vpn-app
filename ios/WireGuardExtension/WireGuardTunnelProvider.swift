@@ -1,19 +1,20 @@
 import NetworkExtension
-import WireGuardKit
+import os.log
 
 class WireGuardTunnelProvider: NEPacketTunnelProvider {
     
     private var adapter: WireGuardAdapter?
     private var tunnelConfiguration: TunnelConfiguration?
+    private let logger = OSLog(subsystem: "com.nodexvpn.app.WireGuardExtension", category: "TunnelProvider")
     
     override func startTunnel(options: [String : NSObject]?, 
                              completionHandler: @escaping (Error?) -> Void) {
         
-        os_log("🚀 Iniciando túnel WireGuard iOS...", log: OSLog.default, type: .info)
+        os_log("🚀 Iniciando túnel WireGuard iOS...", log: logger, type: .info)
         
         guard let protocolConfiguration = self.protocolConfiguration as? NETunnelProviderProtocol,
               let configData = protocolConfiguration.providerConfiguration?["wg-quick-config"] as? String else {
-            os_log("❌ No se encontró configuración WireGuard", log: OSLog.default, type: .error)
+            os_log("❌ No se encontró configuración WireGuard", log: logger, type: .error)
             completionHandler(TunnelError.invalidConfiguration)
             return
         }
@@ -28,14 +29,14 @@ class WireGuardTunnelProvider: NEPacketTunnelProvider {
             }
             
             // Crear adaptador WireGuard
-            self.adapter = WireGuardAdapter(with: self) { logLevel, message in
-                os_log("WireGuard: %{public}@", log: OSLog.default, type: .info, message)
+            self.adapter = WireGuardAdapter(with: self) { message in
+                os_log("WireGuard: %{public}@", log: self.logger, type: .info, message)
             }
             
             // Configurar interfaz de red
             self.configureNetworkInterface(tunnelConfig: tunnelConfig) { [weak self] error in
                 if let error = error {
-                    os_log("❌ Error configurando interfaz: %{public}@", log: OSLog.default, type: .error, error.localizedDescription)
+                    os_log("❌ Error configurando interfaz: %{public}@", log: self.logger, type: .error, error.localizedDescription)
                     completionHandler(error)
                     return
                 }
@@ -43,17 +44,17 @@ class WireGuardTunnelProvider: NEPacketTunnelProvider {
                 // Iniciar adaptador WireGuard
                 self?.adapter?.start(tunnelConfiguration: tunnelConfig) { error in
                     if let error = error {
-                        os_log("❌ Error iniciando WireGuard: %{public}@", log: OSLog.default, type: .error, error.localizedDescription)
+                        os_log("❌ Error iniciando WireGuard: %{public}@", log: self.logger, type: .error, error.localizedDescription)
                         completionHandler(error)
                     } else {
-                        os_log("✅ WireGuard iOS iniciado exitosamente", log: OSLog.default, type: .info)
+                        os_log("✅ WireGuard iOS iniciado exitosamente", log: self.logger, type: .info)
                         completionHandler(nil)
                     }
                 }
             }
             
         } catch {
-            os_log("❌ Error parseando configuración: %{public}@", log: OSLog.default, type: .error, error.localizedDescription)
+            os_log("❌ Error parseando configuración: %{public}@", log: self.logger, type: .error, error.localizedDescription)
             completionHandler(error)
         }
     }
@@ -61,13 +62,13 @@ class WireGuardTunnelProvider: NEPacketTunnelProvider {
     override func stopTunnel(with reason: NEProviderStopReason, 
                             completionHandler: @escaping () -> Void) {
         
-        os_log("🔌 Deteniendo túnel WireGuard iOS...", log: OSLog.default, type: .info)
+        os_log("🔌 Deteniendo túnel WireGuard iOS...", log: logger, type: .info)
         
         adapter?.stop { [weak self] error in
             if let error = error {
-                os_log("❌ Error deteniendo WireGuard: %{public}@", log: OSLog.default, type: .error, error.localizedDescription)
+                os_log("❌ Error deteniendo WireGuard: %{public}@", log: self.logger, type: .error, error.localizedDescription)
             } else {
-                os_log("✅ WireGuard iOS detenido", log: OSLog.default, type: .info)
+                os_log("✅ WireGuard iOS detenido", log: self.logger, type: .info)
             }
             
             self?.adapter = nil
@@ -83,12 +84,12 @@ class WireGuardTunnelProvider: NEPacketTunnelProvider {
     }
     
     override func sleep(completionHandler: @escaping () -> Void) {
-        os_log("😴 VPN entrando en modo suspensión", log: OSLog.default, type: .info)
+        os_log("😴 VPN entrando en modo suspensión", log: logger, type: .info)
         completionHandler()
     }
     
     override func wake() {
-        os_log("🌅 VPN despertando de suspensión", log: OSLog.default, type: .info)
+        os_log("🌅 VPN despertando de suspensión", log: logger, type: .info)
     }
     
     // MARK: - Private Methods
@@ -100,19 +101,31 @@ class WireGuardTunnelProvider: NEPacketTunnelProvider {
         
         // Configurar direcciones IP
         if let interface = tunnelConfig.interface {
-            let addresses = interface.addresses.map { $0.address.stringRepresentation }
-            let subnets = interface.addresses.map { address in
-                NEIPv4Route(destinationAddress: address.address.stringRepresentation, 
-                           subnetMask: address.networkPrefixLength.netmask)
+            // Separar direcciones IPv4 e IPv6
+            let ipv4Addresses = interface.addresses.filter { !$0.address.contains(":") }
+            let ipv6Addresses = interface.addresses.filter { $0.address.contains(":") }
+            
+            // Configurar IPv4
+            if !ipv4Addresses.isEmpty {
+                let addresses = ipv4Addresses.map { $0.address }
+                let subnetMasks = ipv4Addresses.map { address in
+                    self.subnetMaskString(from: address.networkPrefixLength)
+                }
+                
+                let ipv4Settings = NEIPv4Settings(addresses: addresses, subnetMasks: subnetMasks)
+                ipv4Settings.includedRoutes = [NEIPv4Route.default()]
+                networkSettings.ipv4Settings = ipv4Settings
             }
             
-            let ipv4Settings = NEIPv4Settings(addresses: addresses, subnetMasks: subnets.map { $0.subnetMask })
-            ipv4Settings.includedRoutes = subnets
-            
-            // Configurar rutas completas (todo el tráfico)
-            ipv4Settings.includedRoutes = [NEIPv4Route.default()]
-            
-            networkSettings.ipv4Settings = ipv4Settings
+            // Configurar IPv6
+            if !ipv6Addresses.isEmpty {
+                let addresses = ipv6Addresses.map { $0.address }
+                let prefixLengths = ipv6Addresses.map { NSNumber(value: $0.networkPrefixLength) }
+                
+                let ipv6Settings = NEIPv6Settings(addresses: addresses, networkPrefixLengths: prefixLengths)
+                ipv6Settings.includedRoutes = [NEIPv6Route.default()]
+                networkSettings.ipv6Settings = ipv6Settings
+            }
             
             // Configurar DNS
             if !interface.dns.isEmpty {
@@ -127,12 +140,23 @@ class WireGuardTunnelProvider: NEPacketTunnelProvider {
         // Aplicar configuración
         self.setTunnelNetworkSettings(networkSettings) { error in
             if let error = error {
-                os_log("❌ Error configurando red: %{public}@", log: OSLog.default, type: .error, error.localizedDescription)
+                os_log("❌ Error configurando red: %{public}@", log: self.logger, type: .error, error.localizedDescription)
             } else {
-                os_log("✅ Configuración de red aplicada", log: OSLog.default, type: .info)
+                os_log("✅ Configuración de red aplicada", log: self.logger, type: .info)
             }
             completion(error)
         }
+    }
+    
+    // MARK: - Helper Methods
+    
+    private func subnetMaskString(from prefixLength: UInt8) -> String {
+        let mask = (0xFFFFFFFF as UInt32) << (32 - UInt32(prefixLength))
+        return String(format: "%d.%d.%d.%d",
+                     (mask >> 24) & 0xFF,
+                     (mask >> 16) & 0xFF,
+                     (mask >> 8) & 0xFF,
+                     mask & 0xFF)
     }
 }
 
@@ -149,18 +173,5 @@ enum TunnelError: Error {
         case .adapterNotFound:
             return "Adaptador WireGuard no encontrado"
         }
-    }
-}
-
-// MARK: - Network Prefix Extensions
-
-extension UInt8 {
-    var netmask: String {
-        let mask = (0xFFFFFFFF as UInt32) << (32 - self)
-        return String(format: "%d.%d.%d.%d",
-                     (mask >> 24) & 0xFF,
-                     (mask >> 16) & 0xFF,
-                     (mask >> 8) & 0xFF,
-                     mask & 0xFF)
     }
 } 

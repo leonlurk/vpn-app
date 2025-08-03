@@ -1,6 +1,8 @@
 import Foundation
 import React
 import NetworkExtension
+import UserNotifications
+import os.log
 
 @objc(RealWireGuardModule)
 class RealWireGuardModule: NSObject, RCTBridgeModule {
@@ -13,20 +15,33 @@ class RealWireGuardModule: NSObject, RCTBridgeModule {
     return true
   }
   
+  // Logging
+  private let logger = OSLog(subsystem: "com.nodexvpn.app", category: "VPN")
+  
   private var vpnManager: NEVPNManager?
   private var currentTunnelProvider: WireGuardTunnelProvider?
+  private let appGroupManager = AppGroupManager.shared
   
   override init() {
     super.init()
     self.vpnManager = NEVPNManager.shared()
-    print("✅ RealWireGuardModule iOS inicializado")
+    os_log("✅ RealWireGuardModule iOS inicializado", log: logger, type: .info)
+    
+    // Solicitar permisos de notificaciones
+    UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+      if granted {
+        os_log("✅ Permisos de notificación concedidos", log: self.logger, type: .info)
+      } else if let error = error {
+        os_log("❌ Error solicitando permisos de notificación: %{public}@", log: self.logger, type: .error, error.localizedDescription)
+      }
+    }
   }
   
   @objc func connect(_ config: NSDictionary, 
                     resolver: @escaping RCTPromiseResolveBlock,
                     rejecter: @escaping RCTPromiseRejectBlock) {
     
-    print("🚀 Iniciando conexión VPN iOS...")
+    os_log("🚀 Iniciando conexión VPN iOS...", log: logger, type: .info)
     
     guard let vpnManager = self.vpnManager else {
       rejecter("VPN_MANAGER_ERROR", "VPN Manager no disponible", nil)
@@ -51,7 +66,7 @@ class RealWireGuardModule: NSObject, RCTBridgeModule {
   @objc func disconnect(_ resolver: @escaping RCTPromiseResolveBlock,
                        rejecter: @escaping RCTPromiseRejectBlock) {
     
-    print("🔌 Desconectando VPN iOS...")
+    os_log("🔌 Desconectando VPN iOS...", log: logger, type: .info)
     
     guard let vpnManager = self.vpnManager else {
       rejecter("VPN_MANAGER_ERROR", "VPN Manager no disponible", nil)
@@ -69,7 +84,7 @@ class RealWireGuardModule: NSObject, RCTBridgeModule {
     ]
     
     resolver(result)
-    print("✅ VPN iOS desconectado")
+    os_log("✅ VPN iOS desconectado", log: logger, type: .info)
   }
   
   @objc func getStatus(_ resolver: @escaping RCTPromiseResolveBlock,
@@ -102,7 +117,7 @@ class RealWireGuardModule: NSObject, RCTBridgeModule {
     
     vpnManager.loadFromPreferences { [weak self] error in
       if let error = error {
-        print("❌ Error cargando preferencias VPN: \(error)")
+        os_log("❌ Error cargando preferencias VPN: %{public}@", log: self.logger, type: .error, error.localizedDescription)
         completion(false)
         return
       }
@@ -114,6 +129,29 @@ class RealWireGuardModule: NSObject, RCTBridgeModule {
       
       // Convertir configuración a formato WireGuard
       let wireGuardConfig = self?.buildWireGuardConfig(from: config) ?? ""
+      
+      // Guardar configuración en App Group para la extension
+      self?.appGroupManager.saveLog("🚀 Guardando configuración en App Group")
+      
+      // Guardar config completa en App Group
+      var configDict: [String: Any] = [:]
+      if let interfaceConfig = config["Interface"] as? NSDictionary {
+        configDict["Interface"] = interfaceConfig as! [String: Any]
+      }
+      if let peerConfig = config["Peer"] as? NSDictionary {
+        configDict["Peer"] = peerConfig as! [String: Any]
+      }
+      
+      self?.appGroupManager.saveVPNConfiguration(configDict)
+      
+      // Guardar configuración WireGuard en archivo
+      do {
+        try self?.appGroupManager.saveWireGuardConfig(wireGuardConfig)
+        self?.appGroupManager.saveLog("✅ Configuración guardada en App Group")
+      } catch {
+        self?.appGroupManager.saveLog("❌ Error guardando configuración: \(error.localizedDescription)")
+      }
+      
       providerProtocol.providerConfiguration = ["wg-quick-config": wireGuardConfig]
       
       vpnManager.protocolConfiguration = providerProtocol
@@ -123,10 +161,10 @@ class RealWireGuardModule: NSObject, RCTBridgeModule {
       // Guardar configuración
       vpnManager.saveToPreferences { saveError in
         if let saveError = saveError {
-          print("❌ Error guardando configuración VPN: \(saveError)")
+          os_log("❌ Error guardando configuración VPN: %{public}@", log: self.logger, type: .error, saveError.localizedDescription)
           completion(false)
         } else {
-          print("✅ Configuración VPN guardada")
+          os_log("✅ Configuración VPN guardada", log: self.logger, type: .info)
           completion(true)
         }
       }
@@ -153,7 +191,7 @@ class RealWireGuardModule: NSObject, RCTBridgeModule {
       ]
       
       resolver(result)
-      print("✅ VPN iOS conectado exitosamente")
+      os_log("✅ VPN iOS conectado exitosamente", log: self.logger, type: .info)
       
     } catch {
       rejecter("VPN_START_ERROR", "Error iniciando VPN: \(error.localizedDescription)", error)
@@ -196,7 +234,7 @@ class RealWireGuardModule: NSObject, RCTBridgeModule {
       }
     }
     
-    print("📋 Configuración WireGuard iOS: \(wireGuardConfig)")
+    os_log("📋 Configuración WireGuard iOS generada", log: logger, type: .info)
     return wireGuardConfig
   }
   
@@ -216,9 +254,9 @@ class RealWireGuardModule: NSObject, RCTBridgeModule {
     
     UNUserNotificationCenter.current().add(request) { error in
       if let error = error {
-        print("❌ Error creando notificación iOS: \(error)")
+        os_log("❌ Error creando notificación iOS: %{public}@", log: self.logger, type: .error, error.localizedDescription)
       } else {
-        print("✅ Notificación VPN iOS creada")
+        os_log("✅ Notificación VPN iOS creada", log: self.logger, type: .info)
       }
     }
   }

@@ -19,6 +19,8 @@
       "bundleIdentifier": "com.nodexvpn.app",
       "buildNumber": "1.0.0",
       "infoPlist": {
+        "NSFaceIDUsageDescription": "Usa Face ID para proteger tu conexión VPN",
+        "NSLocalNetworkUsageDescription": "NodeX VPN necesita acceso a la red local para configurar el túnel VPN",
         "ITSAppUsesNonExemptEncryption": false,
         "NSAppTransportSecurity": {
           "NSExceptionDomains": {
